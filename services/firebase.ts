@@ -6,12 +6,18 @@ import { getFirestore } from 'firebase/firestore';
 // Using (import.meta as any) to avoid TypeScript error "Property 'env' does not exist on type 'ImportMeta'"
 const metaEnv = (import.meta as any).env || {};
 
-const apiKey = metaEnv.VITE_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
-const authDomain = metaEnv.VITE_FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN;
-const projectId = metaEnv.VITE_FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-const storageBucket = metaEnv.VITE_FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
-const messagingSenderId = metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
-const appId = metaEnv.VITE_FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID;
+// Função para limpar aspas ou espaços que foram colados por engano no Netlify
+const sanitize = (value: string | undefined) => {
+  if (!value) return undefined;
+  return value.replace(/["']/g, "").trim();
+};
+
+const apiKey = sanitize(metaEnv.VITE_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY);
+const authDomain = sanitize(metaEnv.VITE_FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN);
+const projectId = sanitize(metaEnv.VITE_FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID);
+const storageBucket = sanitize(metaEnv.VITE_FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET);
+const messagingSenderId = sanitize(metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID);
+const appId = sanitize(metaEnv.VITE_FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID);
 
 const firebaseConfig = {
   apiKey,
