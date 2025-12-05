@@ -378,6 +378,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setLoading(true);
+    // Timeout safety
+    const timeout = setTimeout(() => {
+        setLoading(false);
+        alert("A inicialização está demorando muito. Verifique se o Firebase Firestore está habilitado no console e se as regras de segurança permitem escrita.");
+    }, 15000);
+
     try {
         // 1. Create Admin User in Auth
         try {
@@ -410,11 +416,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
         }
         
+        clearTimeout(timeout);
         alert("Sucesso! Banco de Dados e Usuário Admin (admin@factoryflow.app / 123456) inicializados.");
     } catch (e) {
         console.error(e);
         alert("Erro ao inicializar.");
     } finally {
+        clearTimeout(timeout);
         setLoading(false);
     }
   };
