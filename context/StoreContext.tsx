@@ -63,7 +63,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const unsubscribeAuth = onAuthStateChanged(auth!, (firebaseUser) => {
       if (firebaseUser) {
         // Find user details in Firestore 'users' collection matches the auth email
-        // Note: Ideally we store uid in the user doc, but for simplicity we match email or load from users collection
+        // Logic handled inside data listener for simplicity
       } else {
         setCurrentUser(null);
       }
@@ -77,8 +77,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       // Update current user if logged in
       if (auth?.currentUser) {
-         const found = usersData.find(u => u.username === auth.currentUser?.email || u.username === auth.currentUser?.email?.split('@')[0]);
-         if (found) setCurrentUser(found);
+         // Match by exact email OR username part
+         const found = usersData.find(u => 
+             u.username.toLowerCase() === auth.currentUser?.email?.toLowerCase() || 
+             u.username.toLowerCase() === auth.currentUser?.email?.split('@')[0].toLowerCase()
+         );
+         
+         if (found) {
+             setCurrentUser(found);
+         } else {
+             // AUTO-PROVISIONING: 
+             // If auth exists but no firestore doc, create a basic one to avoid lockout
+             const email = auth.currentUser?.email;
+             if (email) {
+                 const newUser: Omit<User, 'id'> = {
+                     name: email.split('@')[0],
+                     username: email,
+                     role: Role.VENDAS // Default role, Admin can change later
+                 };
+                 addDoc(collection(db, 'users'), newUser).catch(console.error);
+             }
+         }
       }
     });
 
@@ -118,10 +137,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Append fake domain if user typed just "admin"
       const finalEmail = email.includes('@') ? email : `${email}@factoryflow.app`;
       await signInWithEmailAndPassword(auth, finalEmail, password || '123456');
-      
-      // The auth listener will update currentUser, but we manually find it here to return success
-      const user = users.find(u => u.username === finalEmail || u.username === email);
-      if (user) setCurrentUser(user);
       return true;
     } catch (error) {
       console.error("Login error", error);
@@ -138,8 +153,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const timestamp = new Date().toISOString();
     const newOrder: Omit<Order, 'id'> = {
       ...orderData,
-      createdAt: timestamp,
       status: OrderStatus.ANALISE_PCP,
+      createdAt: timestamp,
       logs: [
         {
           stage: OrderStatus.ANALISE_PCP,
@@ -315,18 +330,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 1. Create Auth Login
       const email = user.username.includes('@') ? user.username : `${user.username}@factoryflow.app`;
       try {
-        // Note: In a real app, you shouldn't create users while logged in as another user 
-        // because Firebase Auth switches context. Ideally use a secondary app instance or Cloud Functions.
-        // For this demo, we will just write to Firestore 'users' collection so the logic works,
-        // but actual Authentication creation requires logging out or Cloud Admin SDK.
-        // We will just simulate adding the user to the DB.
-        
         await addDoc(collection(db, 'users'), {
             ...user,
             username: email // Ensure email format in DB
         });
         
-        alert(`Usuário criado no banco de dados. Para login funcionar, é necessário criar também no Firebase Auth (Painel) com e-mail: ${email}`);
+        alert(`Usuário adicionado ao banco de dados. Para que o login funcione, você deve criar manualmente o usuário no Firebase Authentication com e-mail: ${email} e senha padrão.`);
 
       } catch (e) {
           console.error(e);
@@ -361,34 +370,47 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- SEED DATABASE ---
   const initializeDatabase = async () => {
-    if (!db) return;
+    if (!db || !auth) return;
     
     // Check if empty
     if (users.length > 0) {
-        if(!confirm("O banco de dados já parece ter usuários. Deseja sobrescrever/adicionar os dados padrão?")) return;
+        if(!confirm("O banco de dados já parece ter usuários. Deseja recriar/adicionar os dados padrão?")) return;
     }
 
     setLoading(true);
     try {
-        // Add Users
-        for (const user of INITIAL_USERS) {
-            const email = `${user.username}@factoryflow.app`;
-            // Only add to firestore collection
-            await addDoc(collection(db, 'users'), { ...user, username: email });
-            
-            // Try to create auth user (This will fail if already logged in, but we try)
-            try {
-                // This resets current session, caveat of client-side admin creation
-                // await createUserWithEmailAndPassword(auth!, email, '123456');
-            } catch (e) {}
+        // 1. Create Admin User in Auth
+        try {
+            await createUserWithEmailAndPassword(auth, 'admin@factoryflow.app', '123456');
+            console.log("Admin auth created successfully");
+        } catch (error: any) {
+            if (error.code === 'auth/email-already-in-use') {
+                console.log("Admin auth already exists, proceeding to firestore sync...");
+            } else {
+                console.error("Error creating admin auth:", error);
+            }
         }
 
-        // Add Products
-        for (const prod of INITIAL_PRODUCTS) {
-            const { id, ...data } = prod;
-            await addDoc(collection(db, 'products'), data);
+        // 2. Add Users to Firestore
+        for (const user of INITIAL_USERS) {
+            const email = `${user.username}@factoryflow.app`;
+            
+            // Check if exists to avoid duplicates (naive check)
+            const existing = users.find(u => u.username === email);
+            if (!existing) {
+                await addDoc(collection(db, 'users'), { ...user, username: email });
+            }
         }
-        alert("Dados iniciais carregados no Firestore! Crie os usuários no Authentication com o final @factoryflow.app e senha '123456' para acessar.");
+
+        // 3. Add Products if empty
+        if (products.length === 0) {
+            for (const prod of INITIAL_PRODUCTS) {
+                const { id, ...data } = prod;
+                await addDoc(collection(db, 'products'), data);
+            }
+        }
+        
+        alert("Sucesso! Banco de Dados e Usuário Admin (admin@factoryflow.app / 123456) inicializados.");
     } catch (e) {
         console.error(e);
         alert("Erro ao inicializar.");
