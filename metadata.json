@@ -1,0 +1,5 @@
+{
+  "name": "FactoryFlow ERP",
+  "description": "Sistema integrado de gestão fabril para componentes elétricos (Tomadas, Interruptores, etc.) com controle de fluxo ponta-a-ponta, gestão de estoque e análise de IA.",
+  "requestFramePermissions": []
+}
